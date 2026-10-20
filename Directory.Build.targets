@@ -1,0 +1,59 @@
+<Project>
+  <!--
+    本文件仅用于让 PCL 的老式（非 SDK 风格）VB/WPF 项目能在 `dotnet build` 命令行下编译。
+    在 Visual Studio 里构建时（MSBuildRuntimeType = Full）这些设置全部不生效，VS 走原生目标，
+    因此不会与 VS 自带的 WPF 目标重复导入。
+  -->
+  <PropertyGroup>
+    <IsDotnetCliBuild Condition="'$(MSBuildRuntimeType)' == 'Core'">true</IsDotnetCliBuild>
+  </PropertyGroup>
+
+  <!--
+    1. 语言版本
+    - .NET SDK 8 自带的 Roslyn 4.11 只支持到 C# 12，项目默认写 13.0 会报 CS1617
+    - VB 必须用 latest：项目里用到了元组、字符串内插、行延续注释、空条件操作符
+  -->
+  <PropertyGroup Condition="'$(IsDotnetCliBuild)' == 'true' and '$(MSBuildProjectExtension)' == '.csproj'">
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IsDotnetCliBuild)' == 'true' and '$(MSBuildProjectExtension)' == '.vbproj'">
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <!--
+    2. 显式导入 WPF 标记编译目标
+    旧式 vbproj 只 Import 了 Microsoft.VisualBasic.targets，该文件不导入 WPF 目标，
+    结果是 *.g.vb（InitializeComponent + WithEvents 字段）根本不生成，
+    表现为几百个 BC30506 / BC30590（Handles 子句找不到 WithEvents 变量）。
+    用 MSBuildSDKsPath 定位，这样换 SDK 版本也不用改路径。
+  -->
+  <PropertyGroup Condition="'$(IsDotnetCliBuild)' == 'true'">
+    <_WinFXTargetsFile>$(MSBuildSDKsPath)\Microsoft.NET.Sdk.WindowsDesktop\targets\Microsoft.WinFX.targets</_WinFXTargetsFile>
+    <!-- packages.config 项目没有 .nuget.g.targets，不关掉会报 MSB3030 无法复制文件 -->
+    <IncludePackageReferencesDuringMarkupCompilation>false</IncludePackageReferencesDuringMarkupCompilation>
+  </PropertyGroup>
+  <Import Project="$(_WinFXTargetsFile)" Condition="'$(IsDotnetCliBuild)' == 'true' and Exists('$(_WinFXTargetsFile)')" />
+
+  <!--
+    3. 补 .NET Framework 框架引用
+    .NET Core 版 MSBuild 的 RAR 任务在旧式项目下不会自动补齐 mscorlib 等程序集，
+    而 WPF 标记编译解析 XAML 里的类型时必须能在 ReferencePath 里找到它们。
+    漏掉 Microsoft.VisualBasic 会报 MC2000。
+  -->
+  <ItemGroup Condition="'$(IsDotnetCliBuild)' == 'true' and '$(MSBuildProjectExtension)' == '.vbproj' and '$(TargetFrameworkIdentifier)' == '.NETFramework'">
+    <Reference Include="mscorlib" />
+    <Reference Include="System.Runtime" />
+    <Reference Include="Microsoft.VisualBasic" />
+    <Reference Include="Microsoft.VisualBasic.Core" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+</Project>
